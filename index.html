@@ -1,0 +1,1896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>3-Coloring Interactive Visualizer</title>
+<style>
+  /* =========================================================
+     GLOBAL THEME & RESETS
+     ========================================================= */
+  :root {
+    --bg-0: #0b1020;
+    --bg-1: #0f1530;
+    --bg-2: #151b3a;
+    --bg-3: #1b2247;
+    --panel: #141a36;
+    --panel-2: #1a2145;
+    --border: #283063;
+    --border-strong: #3a437f;
+    --text: #e6ebff;
+    --text-dim: #a9b2d8;
+    --text-mute: #7a83ab;
+    --accent: #7c5cff;
+    --accent-2: #3ad3ff;
+    --good: #21d07a;
+    --warn: #ffb020;
+    --bad: #ff5a6a;
+    --c1: #ff6b6b;   /* Color 1 (red) */
+    --c2: #4dd0e1;   /* Color 2 (cyan) */
+    --c3: #ffd54f;   /* Color 3 (yellow) */
+    --c4: #b388ff;   /* extra color (purple) */
+    --c5: #81c784;   /* extra color (green) */
+    --uncolored: #35407a;
+    --current: #ffffff;
+    --conflict: #ff3366;
+    --shadow: 0 10px 30px rgba(0,0,0,0.35);
+    --radius: 14px;
+    --radius-sm: 10px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: radial-gradient(1200px 800px at 10% -10%, #1b225a 0%, transparent 60%),
+                radial-gradient(1000px 700px at 110% 10%, #142a4a 0%, transparent 60%),
+                var(--bg-0);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  h1,h2,h3,h4 { margin: 0 0 8px 0; font-weight: 700; letter-spacing: 0.2px; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 18px; }
+  h3 { font-size: 15px; }
+  h4 { font-size: 13px; color: var(--text-dim); }
+  p { margin: 6px 0; color: var(--text-dim); }
+  code, pre { font-family: var(--mono); }
+  a { color: var(--accent-2); }
+
+  /* =========================================================
+     HEADER
+     ========================================================= */
+  header.app-header {
+    position: sticky; top: 0; z-index: 50;
+    background: linear-gradient(180deg, rgba(10,14,36,0.95), rgba(10,14,36,0.7));
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 22px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 12px;
+  }
+  .brand-logo {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: conic-gradient(from 90deg, var(--c1), var(--c2), var(--c3), var(--c1));
+    box-shadow: 0 6px 18px rgba(124,92,255,0.35), inset 0 0 0 2px rgba(255,255,255,0.08);
+    position: relative;
+  }
+  .brand-logo::after {
+    content: ""; position: absolute; inset: 6px; border-radius: 6px; background: var(--bg-0);
+  }
+  .brand-text .title { font-size: 20px; font-weight: 800; }
+  .brand-text .subtitle { font-size: 12px; color: var(--text-mute); }
+
+  .header-right { display: flex; align-items: center; gap: 10px; }
+  .badge {
+    font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase;
+    padding: 6px 10px; border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: var(--panel-2);
+    color: var(--text-dim);
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .badge .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-2);
+    box-shadow: 0 0 8px var(--accent-2);
+  }
+  .badge.mode-idle .dot { background: var(--text-mute); box-shadow:none; }
+  .badge.mode-run .dot { background: var(--good); box-shadow: 0 0 10px var(--good); }
+  .badge.mode-done .dot { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+  .badge.mode-fail .dot { background: var(--bad); box-shadow: 0 0 10px var(--bad); }
+
+  /* =========================================================
+     LAYOUT
+     ========================================================= */
+  main.layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 560px) 1fr;
+    gap: 18px;
+    padding: 18px;
+    align-items: start;
+  }
+  @media (max-width: 1080px) {
+    main.layout { grid-template-columns: 1fr; }
+  }
+
+  .col { display: flex; flex-direction: column; gap: 16px; }
+
+  .card {
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .card > header {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  }
+  .card > .body { padding: 14px 16px; }
+
+  /* Collapsible */
+  details.card > summary {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 12px 16px; border-bottom: 1px solid transparent;
+    user-select: none;
+  }
+  details.card[open] > summary { border-bottom: 1px solid var(--border); }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary .chev {
+    transition: transform 0.2s ease; color: var(--text-mute);
+  }
+  details.card[open] > summary .chev { transform: rotate(90deg); }
+  details.card > .body { padding: 14px 16px; }
+
+  /* Concept cards grid */
+  .grid-cards {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .mini-card {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 12px;
+  }
+  .mini-card .t { font-size: 12px; color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.8px; font-weight: 700; }
+  .mini-card .d { color: var(--text); font-size: 13px; margin-top: 4px; }
+
+  /* =========================================================
+     CONTROLS PANEL
+     ========================================================= */
+  .control-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .control-row > label { font-size: 12px; color: var(--text-dim); min-width: 90px; }
+
+  select, input[type=text], textarea {
+    background: var(--bg-1); color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: var(--sans);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s ease;
+    width: 100%;
+  }
+  select:focus, input:focus, textarea:focus { border-color: var(--accent); }
+
+  textarea {
+    font-family: var(--mono); min-height: 72px; resize: vertical;
+    font-size: 12.5px; line-height: 1.5;
+  }
+
+  input[type=range] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+
+  .btn {
+    border: 1px solid var(--border-strong);
+    background: linear-gradient(180deg, #242c5e, #1c2451);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: transform 0.05s ease, background 0.15s ease, border-color 0.15s ease;
+  }
+  .btn:hover { background: linear-gradient(180deg, #2d3672, #232b60); border-color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary {
+    background: linear-gradient(180deg, #7c5cff, #5e43e6);
+    border-color: #8a71ff;
+    color: #fff;
+  }
+  .btn.primary:hover { background: linear-gradient(180deg, #8b6cff, #6a4fec); }
+  .btn.ghost { background: transparent; }
+  .btn.small { padding: 5px 9px; font-size: 12px; }
+  .btn-group { display: flex; flex-wrap: wrap; gap: 6px; }
+  .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
+  .tag-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 10px; border-radius: 999px;
+    background: var(--bg-1); border: 1px solid var(--border-strong);
+    cursor: pointer; font-size: 12px; color: var(--text-dim);
+  }
+  .tag-toggle input { accent-color: var(--accent); }
+  .tag-toggle.active { color: var(--text); border-color: var(--accent); background: #231e52; }
+
+  .seg {
+    display: inline-flex; border: 1px solid var(--border-strong);
+    border-radius: 8px; overflow: hidden; background: var(--bg-1);
+  }
+  .seg button {
+    background: transparent; border: none; color: var(--text-dim);
+    padding: 6px 10px; font-size: 12px; cursor: pointer;
+  }
+  .seg button.on { background: var(--accent); color: white; }
+
+  /* =========================================================
+     VISUALIZATION
+     ========================================================= */
+  .viz-wrap {
+    position: relative;
+    background:
+      radial-gradient(600px 400px at 50% 20%, #1a224d 0%, transparent 60%),
+      var(--bg-1);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  svg.graph {
+    width: 100%; height: 460px; display: block;
+    background: transparent;
+  }
+  .edge { stroke: #5a65a8; stroke-width: 2; opacity: 0.7; transition: stroke 0.25s ease, opacity 0.25s ease; }
+  .edge.checking { stroke: var(--warn); stroke-width: 3; opacity: 1; }
+  .edge.conflict { stroke: var(--conflict); stroke-width: 3.5; opacity: 1; animation: flash 0.8s ease-in-out; }
+  .vertex circle {
+    stroke: #eaeefc; stroke-width: 2;
+    transition: fill 0.25s ease, stroke 0.25s ease, r 0.25s ease;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.3));
+  }
+  .vertex text {
+    text-anchor: middle; dominant-baseline: central;
+    fill: #0b1020; font-weight: 800; font-size: 13px; pointer-events: none;
+    font-family: var(--sans);
+  }
+  .vertex.uncolored circle { fill: var(--uncolored); }
+  .vertex.uncolored text { fill: #cfd6ff; }
+  .vertex.current circle { stroke: var(--current); stroke-width: 3.5; r: 20; }
+  .vertex.c1 circle { fill: var(--c1); }
+  .vertex.c2 circle { fill: var(--c2); }
+  .vertex.c3 circle { fill: var(--c3); }
+  .vertex.c4 circle { fill: var(--c4); }
+  .vertex.c5 circle { fill: var(--c5); }
+  .vertex.conflict circle { stroke: var(--conflict); stroke-width: 3.5; }
+
+  @keyframes flash {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Legend */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    background: rgba(0,0,0,0.15);
+  }
+  .legend .item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .swatch { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #eaeefc; display: inline-block; }
+  .swatch.uncolored { background: var(--uncolored); }
+  .swatch.current { background: transparent; border-color: #fff; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.2); }
+  .swatch.c1 { background: var(--c1); }
+  .swatch.c2 { background: var(--c2); }
+  .swatch.c3 { background: var(--c3); }
+  .swatch.c4 { background: var(--c4); }
+  .swatch.conflict { background: transparent; border-color: var(--conflict); }
+
+  /* =========================================================
+     PSEUDOCODE & STEP EXPLANATION
+     ========================================================= */
+  .pseudocode {
+    background: #0a0f25;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 0;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    max-height: 260px; overflow: auto;
+  }
+  .pseudocode .line {
+    padding: 2px 14px; color: #c6ccee;
+    white-space: pre;
+    transition: background 0.15s ease;
+    border-left: 3px solid transparent;
+  }
+  .pseudocode .line.active {
+    background: rgba(124,92,255,0.18);
+    border-left: 3px solid var(--accent);
+    color: #ffffff;
+  }
+  .pseudocode .kw { color: #ff8cc3; font-weight: 600; }
+  .pseudocode .fn { color: #9be7ff; }
+  .pseudocode .cm { color: #6c7aa8; font-style: italic; }
+
+  .tabs { display: flex; gap: 4px; background: var(--bg-1); padding: 4px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 10px; }
+  .tabs button {
+    flex: 1; background: transparent; border: none; color: var(--text-dim);
+    padding: 7px 10px; font-size: 12.5px; border-radius: 7px; cursor: pointer; font-weight: 600;
+  }
+  .tabs button.on { background: var(--accent); color: white; }
+
+  .step-box {
+    background: #0f1430;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    min-height: 64px;
+    font-size: 13px;
+  }
+  .step-box .stepk { font-size: 11px; color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+
+  /* Stats */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  }
+  @media (max-width: 720px) { .stats-grid { grid-template-columns: repeat(2, 1fr); } }
+  .stat {
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .stat .k { font-size: 11px; color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat .v { font-size: 18px; font-weight: 800; color: var(--text); margin-top: 2px; }
+  .stat .v.good { color: var(--good); }
+  .stat .v.bad { color: var(--bad); }
+  .stat .v.warn { color: var(--warn); }
+
+  /* Comparison */
+  .cmp-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  @media (max-width: 700px) { .cmp-grid { grid-template-columns: 1fr; } }
+  .cmp-card {
+    background: var(--bg-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .cmp-card h4 { color: var(--accent-2); margin-bottom: 6px; }
+  .cmp-card .row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed rgba(255,255,255,0.05); font-size: 13px; }
+  .cmp-card .row:last-child { border-bottom: none; }
+  .cmp-card .row .k { color: var(--text-dim); }
+  .cmp-card .row .v { font-weight: 700; }
+
+  .chart-wrap { background: var(--bg-1); border: 1px solid var(--border); border-radius: 10px; padding: 8px; }
+  .chart-legend { display:flex; gap:14px; font-size:12px; color: var(--text-dim); justify-content: center; margin-top: 6px; }
+  .chart-legend .k { display:inline-flex; align-items:center; gap:6px; }
+  .chart-legend .d { width:12px; height:2px; display:inline-block; }
+
+  /* NP Section */
+  .np-section .sub {
+    border-left: 3px solid var(--accent);
+    padding: 6px 12px;
+    margin: 8px 0;
+  }
+  .np-section .sub h3 { color: var(--accent-2); }
+  .np-section .formula {
+    background: #0a0f25; border: 1px solid var(--border);
+    padding: 8px 12px; border-radius: 8px;
+    font-family: var(--mono); color: #d4daff; margin: 6px 0;
+    font-size: 13px;
+  }
+  .np-section ul, .np-section ol { color: var(--text-dim); padding-left: 20px; }
+  .np-section li { margin: 3px 0; }
+
+  .gadget-box {
+    background: var(--bg-1); border: 1px solid var(--border);
+    padding: 10px; border-radius: 10px; margin: 8px 0;
+  }
+
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px;
+    background: var(--bg-3); color: var(--text-dim); border: 1px solid var(--border-strong);
+    margin-right: 4px;
+  }
+  .pill.ok { color: var(--good); border-color: rgba(33,208,122,0.4); }
+  .pill.bad { color: var(--bad); border-color: rgba(255,90,106,0.4); }
+  .pill.warn { color: var(--warn); border-color: rgba(255,176,32,0.4); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #252c58; border-radius: 10px; border: 2px solid var(--bg-0); }
+
+  /* Utility */
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 520px) { .row-2 { grid-template-columns: 1fr; } }
+  .muted { color: var(--text-mute); }
+  .hint { font-size: 12px; color: var(--text-mute); }
+  .ok { color: var(--good); }
+  .bad { color: var(--bad); }
+  .warn { color: var(--warn); }
+  hr.sep { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     HEADER
+     ============================================================ -->
+<header class="app-header">
+  <div class="brand">
+    <div class="brand-logo" aria-hidden="true"></div>
+    <div class="brand-text">
+      <div class="title">3-Coloring Interactive Visualizer</div>
+      <div class="subtitle">Exploring a classic NP-complete problem through greedy heuristics and exact backtracking</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span id="modeBadge" class="badge mode-idle"><span class="dot"></span><span id="modeText">Idle</span></span>
+    <span class="badge" title="Current graph name"><span class="dot"></span><span id="graphLabel">Graph: —</span></span>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ============================================================
+       LEFT COLUMN: CONTROLS + EDUCATION
+       ============================================================ -->
+  <section class="col">
+
+    <!-- Overview -->
+    <details class="card" open>
+      <summary>
+        <div><h2>Overview — What is Graph 3-Coloring?</h2>
+          <div class="hint">The problem, the stakes, and why it is interesting.</div>
+        </div>
+        <span class="chev">▶</span>
+      </summary>
+      <div class="body">
+        <p>
+          A <b>proper k-coloring</b> of a graph <code>G = (V, E)</code> is an assignment
+          <code>c : V → {1, …, k}</code> such that for every edge
+          <code>(u, v) ∈ E</code>, <code>c(u) ≠ c(v)</code>.
+          The <b>3-Coloring</b> problem asks: given an undirected graph <code>G</code>,
+          does a proper 3-coloring exist?
+        </p>
+        <div class="grid-cards" style="margin-top:8px;">
+          <div class="mini-card"><div class="t">Scheduling</div><div class="d">Non-conflicting time slots for overlapping tasks or exams.</div></div>
+          <div class="mini-card"><div class="t">Register allocation</div><div class="d">Compilers map variables to CPU registers using interference graphs.</div></div>
+          <div class="mini-card"><div class="t">Frequency assignment</div><div class="d">Radio towers avoiding interference on shared bands.</div></div>
+          <div class="mini-card"><div class="t">Map coloring</div><div class="d">Regions sharing a border get different colors.</div></div>
+        </div>
+        <hr class="sep" />
+        <p>
+          <b>2-coloring</b> is equivalent to testing whether a graph is <b>bipartite</b>,
+          which is solvable in linear time with BFS/DFS. By contrast, <b>3-coloring</b> is
+          already NP-complete — the jump from 2 to 3 colors is the classical boundary
+          between easy and intractable in this family of problems.
+        </p>
+      </div>
+    </details>
+
+    <!-- Controls -->
+    <section class="card">
+      <header>
+        <h2>Controls</h2>
+        <span class="hint">Build a graph, pick an algorithm, step through.</span>
+      </header>
+      <div class="body">
+
+        <div class="control-row">
+          <label for="preset">Preset</label>
+          <select id="preset">
+            <option value="triangleChain">Triangle chain (3-colorable)</option>
+            <option value="K4">K4 — complete graph on 4 (NOT 3-colorable)</option>
+            <option value="greedyTrap">Greedy trap (ordering matters)</option>
+            <option value="petersen">Petersen graph (3-colorable)</option>
+            <option value="oddCycle">Odd cycle C5 (3-colorable, not 2-colorable)</option>
+          </select>
+        </div>
+
+        <div class="control-row">
+          <label>Custom graph</label>
+        </div>
+        <textarea id="customInput" spellcheck="false"
+placeholder="Vertices: A,B,C,D
+Edges: A-B, A-C, B-C, C-D">Vertices: A,B,C,D,E
+Edges: A-B, B-C, C-D, D-E, E-A, A-C</textarea>
+        <div class="btn-group" style="margin-top:6px;">
+          <button class="btn primary" id="btnBuildGraph">Build / Load Graph</button>
+          <button class="btn" id="btnLoadPreset">Load Preset</button>
+        </div>
+
+        <hr class="sep" />
+
+        <div class="control-row">
+          <label>Algorithm</label>
+          <div class="seg" id="algSeg">
+            <button class="on" data-alg="greedy">Greedy</button>
+            <button data-alg="backtrack">Backtracking (Exact)</button>
+          </div>
+        </div>
+
+        <div class="control-row">
+          <label>Ordering</label>
+          <div class="seg" id="orderSeg">
+            <button class="on" data-order="original">Original</button>
+            <button data-order="random">Random</button>
+            <button data-order="descDegree">Desc. degree</button>
+          </div>
+          <button class="btn small" id="btnShuffle" title="Re-roll random ordering">Shuffle</button>
+        </div>
+
+        <div class="control-row">
+          <label for="speed">Speed</label>
+          <input type="range" id="speed" min="50" max="1200" value="500" step="50" />
+          <span id="speedLabel" class="hint">500 ms</span>
+        </div>
+
+        <div class="btn-group" style="margin-top:6px;">
+          <button class="btn primary" id="btnBuildSteps">Build Steps</button>
+          <button class="btn" id="btnStep">Step ▶</button>
+          <button class="btn" id="btnPlay">Play ⏵</button>
+          <button class="btn" id="btnPause">Pause ⏸</button>
+          <button class="btn ghost" id="btnReset">Reset ↺</button>
+        </div>
+
+        <div class="control-row" style="margin-top:10px;">
+          <label>Progress</label>
+          <span id="stepCounter" class="pill">Step 0 / 0</span>
+          <span id="statusIndicator" class="pill">Status: idle</span>
+        </div>
+
+        <hr class="sep" />
+
+        <label class="tag-toggle" id="cmpToggleWrap">
+          <input type="checkbox" id="cmpToggle" />
+          <span>Comparison mode (run both and compare)</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Paradigms -->
+    <details class="card">
+      <summary>
+        <div><h2>Algorithmic paradigms used</h2>
+          <div class="hint">Greedy vs. Backtracking — when and why.</div></div>
+        <span class="chev">▶</span>
+      </summary>
+      <div class="body">
+        <h3>Greedy paradigm</h3>
+        <p>At each step, make the <b>locally optimal choice</b>: for the current vertex, assign the
+           smallest color index that no already-colored neighbor uses. Fast (<code>O(V + E)</code>),
+           simple, but it is a <b>heuristic</b>: it is not guaranteed to use the minimum
+           number of colors, even when the graph is 3-colorable.</p>
+
+        <h3>Backtracking paradigm</h3>
+        <p>Systematically explore color assignments. Try color 1 for the next vertex; if no conflict,
+           recurse. If a dead-end is reached, <b>undo</b> and try the next color. This exhaustive
+           search always finds a valid 3-coloring if one exists, but its worst case is
+           <code>O(3<sup>n</sup>)</code> — exponential.</p>
+
+        <h3>Why ordering affects greedy</h3>
+        <p>Greedy's output depends on the vertex order. A bad order can force greedy to use
+           <b>4 colors on a 3-colorable graph</b>. The preset “Greedy trap” demonstrates this:
+           try original order first, then try <b>Desc. degree</b> — the result can change.</p>
+
+        <div class="gadget-box">
+          <b>Counterexample intuition (crown-style graph).</b>
+          Take vertices <code>a1, a2, b1, b2, b3</code>. Join every <code>a<sub>i</sub></code> to
+          every <code>b<sub>j</sub></code>. It is bipartite, hence 2-colorable.
+          Yet a greedy process that interleaves <code>a1, b1, a2, b2, b3</code> in the wrong order
+          can still only produce 2 colors here; but on graphs such as the “Greedy trap” preset,
+          greedy fails on 3 and needs a 4th.
+        </div>
+      </div>
+    </details>
+
+    <!-- NP-Completeness (long, structured) -->
+    <details class="card np-section">
+      <summary>
+        <div><h2>NP-Completeness of 3-Coloring</h2>
+          <div class="hint">Problem, certificate, verifier, and the full reduction from 3-SAT.</div></div>
+        <span class="chev">▶</span>
+      </summary>
+      <div class="body">
+
+        <div class="sub">
+          <h3>1. Problem Definition</h3>
+          <p>
+            <b>3-COLOR</b> — Given an undirected graph <code>G = (V, E)</code>, decide whether there exists a
+            function <code>c : V → {1, 2, 3}</code> such that <code>c(u) ≠ c(v)</code> for every edge
+            <code>(u, v) ∈ E</code>.
+          </p>
+        </div>
+
+        <div class="sub">
+          <h3>2. Why 3-Coloring is in NP</h3>
+          <p>
+            To show <b>3-COLOR ∈ NP</b>, we provide a <b>polynomial-time verifier</b>. Given a graph
+            <code>G</code> and a candidate coloring <code>c</code> (the <b>certificate</b>), the verifier
+            checks in <code>O(|V| + |E|)</code> time that:
+          </p>
+          <ul>
+            <li>each vertex receives a label in <code>{1, 2, 3}</code>, and</li>
+            <li>no edge <code>(u, v)</code> has <code>c(u) = c(v)</code>.</li>
+          </ul>
+          <p>Since this check is polynomial in the input size, 3-COLOR lies in NP.</p>
+        </div>
+
+        <div class="sub">
+          <h3>3. Certificate and Verifier</h3>
+          <div class="formula">Certificate: mapping V → {1,2,3}.
+Verifier(G, c):
+  for each v in V: check c(v) ∈ {1,2,3}
+  for each (u,v) in E: check c(u) ≠ c(v)
+  return all checks passed</div>
+        </div>
+
+        <div class="sub">
+          <h3>4. Reduction from 3-SAT</h3>
+          <p>
+            We show <b>3-SAT ≤<sub>p</sub> 3-COLOR</b>. Given a 3-SAT formula
+            <code>φ = C<sub>1</sub> ∧ C<sub>2</sub> ∧ … ∧ C<sub>m</sub></code> over variables
+            <code>x<sub>1</sub>, …, x<sub>n</sub></code>, we build a graph <code>G<sub>φ</sub></code>
+            such that <code>φ</code> is satisfiable iff <code>G<sub>φ</sub></code> is 3-colorable.
+            The three color classes will encode <b>True (T)</b>, <b>False (F)</b>, and a neutral
+            <b>Base (B)</b>.
+          </p>
+        </div>
+
+        <div class="sub">
+          <h3>5. Truth gadget — T / F / B triangle</h3>
+          <p>
+            Introduce three special vertices <code>T</code>, <code>F</code>, <code>B</code>, all pairwise
+            connected into a triangle. Any 3-coloring must give them three different colors; fix
+            one mapping, calling their colors <b>“True”</b>, <b>“False”</b>, and <b>“Base”</b>.
+          </p>
+          <!-- Reduction diagram will be rendered in an SVG below -->
+        </div>
+
+        <div class="sub">
+          <h3>6. Variable gadget</h3>
+          <p>
+            For every variable <code>x<sub>i</sub></code>, create two vertices <code>v<sub>i</sub></code>
+            and <code>¬v<sub>i</sub></code>. Connect <code>v<sub>i</sub></code> to <code>¬v<sub>i</sub></code>,
+            and connect both to <code>B</code>. This forces <code>v<sub>i</sub></code> and
+            <code>¬v<sub>i</sub></code> to take the two non-Base colors, i.e. one is colored
+            <b>T</b> and the other <b>F</b>. Hence each literal receives a consistent Boolean value.
+          </p>
+        </div>
+
+        <div class="sub">
+          <h3>7. Clause gadget (OR-gadget)</h3>
+          <p>
+            For each clause <code>C = ℓ<sub>1</sub> ∨ ℓ<sub>2</sub> ∨ ℓ<sub>3</sub></code> we attach a
+            small gadget made of 6 internal vertices combining three <b>OR-gadgets</b> (each an
+            implementation of a 2-input OR using five vertices with specific triangles), wired so that
+            the output vertex of the gadget can be colored <b>T</b> iff at least one of
+            <code>ℓ<sub>1</sub>, ℓ<sub>2</sub>, ℓ<sub>3</sub></code> is colored <b>T</b>. The output is
+            then forced equal to <b>T</b> by connecting it appropriately to <code>F</code> and
+            <code>B</code>.
+          </p>
+        </div>
+
+        <div class="sub">
+          <h3>8. Forward direction (⇒)</h3>
+          <p>
+            Suppose <code>φ</code> is satisfiable via an assignment <code>α</code>. Color each
+            literal vertex with <b>T</b> iff <code>α</code> makes it true, otherwise <b>F</b>. Color
+            the truth triangle as defined. Each OR-gadget can be consistently completed because at
+            least one input literal is colored <b>T</b>, which propagates through the gadget to let
+            the output take <b>T</b>. Therefore <code>G<sub>φ</sub></code> is 3-colorable.
+          </p>
+        </div>
+
+        <div class="sub">
+          <h3>9. Backward direction (⇐)</h3>
+          <p>
+            Conversely, suppose <code>G<sub>φ</sub></code> admits a 3-coloring. The triangle
+            <code>{T, F, B}</code> receives the three distinct colors; rename them if necessary so
+            that those vertices are literally colored <b>T</b>, <b>F</b>, <b>B</b>. The variable
+            gadget forces each pair <code>(v<sub>i</sub>, ¬v<sub>i</sub>)</code> to split between
+            <b>T</b> and <b>F</b>, giving a consistent Boolean assignment <code>α</code>. For every
+            clause, the gadget's structure guarantees the output can be <b>T</b> only when at least
+            one literal is colored <b>T</b>, i.e. the clause is satisfied. Hence <code>φ</code> is
+            satisfiable.
+          </p>
+        </div>
+
+        <div class="sub">
+          <h3>10. Polynomial-time construction</h3>
+          <p>
+            The truth triangle adds <code>3</code> vertices. Each of the <code>n</code> variables
+            adds <code>2</code> vertices and <code>3</code> edges. Each of the <code>m</code> clauses
+            adds a bounded-size OR-gadget (a constant number of vertices and edges, independent of
+            <code>m</code> and <code>n</code>). Total size is
+            <code>O(n + m)</code>, built in polynomial time.
+          </p>
+        </div>
+
+        <div class="sub">
+          <h3>11. Key takeaway</h3>
+          <ul>
+            <li>3-COLOR ∈ NP (easy verifier).</li>
+            <li>3-SAT ≤<sub>p</sub> 3-COLOR (the construction above).</li>
+            <li>3-SAT is NP-hard ⇒ <b>3-COLOR is NP-complete</b>.</li>
+            <li>Unless P = NP, no polynomial-time algorithm exists for 3-COLOR in general.</li>
+          </ul>
+        </div>
+
+        <!-- Reduction diagram (SVG) -->
+        <div class="gadget-box">
+          <h4 style="margin-bottom:4px;">Simple reduction diagram</h4>
+          <svg viewBox="0 0 520 260" width="100%" height="260" aria-label="3-SAT to 3-Coloring reduction diagram">
+            <defs>
+              <marker id="arr" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+                <path d="M0,0 L0,6 L9,3 Z" fill="#a9b2d8"/>
+              </marker>
+            </defs>
+
+            <!-- Truth triangle -->
+            <g>
+              <circle cx="100" cy="60" r="20" fill="#4dd0e1" stroke="#eaeefc" stroke-width="2"/>
+              <text x="100" y="60" text-anchor="middle" dominant-baseline="central" fill="#0b1020" font-weight="800">T</text>
+
+              <circle cx="60" cy="130" r="20" fill="#ff6b6b" stroke="#eaeefc" stroke-width="2"/>
+              <text x="60" y="130" text-anchor="middle" dominant-baseline="central" fill="#0b1020" font-weight="800">F</text>
+
+              <circle cx="140" cy="130" r="20" fill="#ffd54f" stroke="#eaeefc" stroke-width="2"/>
+              <text x="140" y="130" text-anchor="middle" dominant-baseline="central" fill="#0b1020" font-weight="800">B</text>
+
+              <line x1="100" y1="60" x2="60" y2="130" stroke="#7a83ab" stroke-width="2"/>
+              <line x1="100" y1="60" x2="140" y2="130" stroke="#7a83ab" stroke-width="2"/>
+              <line x1="60" y1="130" x2="140" y2="130" stroke="#7a83ab" stroke-width="2"/>
+
+              <text x="100" y="180" text-anchor="middle" fill="#a9b2d8" font-size="11">Truth triangle</text>
+            </g>
+
+            <!-- Variable gadget -->
+            <g>
+              <circle cx="260" cy="80" r="18" fill="#35407a" stroke="#eaeefc" stroke-width="2"/>
+              <text x="260" y="80" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="11">x</text>
+
+              <circle cx="260" cy="150" r="18" fill="#35407a" stroke="#eaeefc" stroke-width="2"/>
+              <text x="260" y="150" text-anchor="middle" dominant-baseline="central" fill="#fff" font-size="11">¬x</text>
+
+              <line x1="260" y1="80" x2="260" y2="150" stroke="#7a83ab" stroke-width="2"/>
+              <line x1="260" y1="80" x2="140" y2="130" stroke="#7a83ab" stroke-width="2" stroke-dasharray="4 3"/>
+              <line x1="260" y1="150" x2="140" y2="130" stroke="#7a83ab" stroke-width="2" stroke-dasharray="4 3"/>
+
+              <text x="260" y="195" text-anchor="middle" fill="#a9b2d8" font-size="11">Variable gadget</text>
+            </g>
+
+            <!-- Clause gadget placeholder -->
+            <g>
+              <rect x="370" y="50" width="120" height="130" rx="10" ry="10" fill="#151b3a" stroke="#3a437f"/>
+              <text x="430" y="75" text-anchor="middle" fill="#e6ebff" font-size="12" font-weight="700">OR-gadget</text>
+              <text x="430" y="95" text-anchor="middle" fill="#a9b2d8" font-size="11">for clause</text>
+              <text x="430" y="112" text-anchor="middle" fill="#a9b2d8" font-size="11">(ℓ₁ ∨ ℓ₂ ∨ ℓ₃)</text>
+
+              <circle cx="390" cy="150" r="10" fill="#4dd0e1"/>
+              <circle cx="430" cy="150" r="10" fill="#ff6b6b"/>
+              <circle cx="470" cy="150" r="10" fill="#ffd54f"/>
+              <text x="430" y="195" text-anchor="middle" fill="#a9b2d8" font-size="11">Clause gadget</text>
+            </g>
+
+            <!-- Arrows -->
+            <line x1="175" y1="95" x2="240" y2="95" stroke="#a9b2d8" stroke-width="1.5" marker-end="url(#arr)"/>
+            <line x1="285" y1="115" x2="365" y2="115" stroke="#a9b2d8" stroke-width="1.5" marker-end="url(#arr)"/>
+
+            <!-- Caption -->
+            <text x="260" y="240" text-anchor="middle" fill="#7a83ab" font-size="11">
+              3-SAT formula → variable &amp; clause gadgets → graph that is 3-colorable iff the formula is satisfiable.
+            </text>
+          </svg>
+        </div>
+      </div>
+    </details>
+
+    <!-- Worked example -->
+    <details class="card">
+      <summary>
+        <div><h2>Worked example — Triangle + tail</h2>
+          <div class="hint">Walk-through on a small graph.</div></div>
+        <span class="chev">▶</span>
+      </summary>
+      <div class="body">
+        <p>
+          Consider <code>V = {A, B, C, D}</code> and
+          <code>E = {A-B, A-C, B-C, C-D}</code>. This graph has a triangle
+          <code>{A,B,C}</code> and a pendant <code>D</code> attached to <code>C</code>.
+        </p>
+        <ol style="color: var(--text-dim); padding-left:20px;">
+          <li>Start with all vertices uncolored.</li>
+          <li>Process <b>A</b> — no colored neighbors, assign <b>Color 1</b>.</li>
+          <li>Process <b>B</b> — neighbor A uses 1, assign <b>Color 2</b>.</li>
+          <li>Process <b>C</b> — neighbors A(1) and B(2) exclude colors 1 and 2, assign <b>Color 3</b>.</li>
+          <li>Process <b>D</b> — only neighbor C(3) is excluded, assign <b>Color 1</b>.</li>
+        </ol>
+        <p class="ok"><b>Result:</b> a valid 3-coloring with exactly 3 colors.</p>
+        <button class="btn small" id="btnLoadWorkedExample">Load this example into the visualizer</button>
+      </div>
+    </details>
+
+  </section>
+
+  <!-- ============================================================
+       RIGHT COLUMN: VISUALIZATION + PSEUDOCODE + STATS
+       ============================================================ -->
+  <section class="col">
+
+    <!-- Graph visualization -->
+    <section class="card">
+      <header>
+        <h2>Graph Visualization</h2>
+        <span class="hint" id="graphHint">Vertices: 0 • Edges: 0</span>
+      </header>
+      <div class="viz-wrap">
+        <svg class="graph" id="graphSvg" viewBox="0 0 800 460" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="legend">
+          <span class="item"><span class="swatch uncolored"></span>Uncolored</span>
+          <span class="item"><span class="swatch current"></span>Current vertex</span>
+          <span class="item"><span class="swatch c1"></span>Color 1</span>
+          <span class="item"><span class="swatch c2"></span>Color 2</span>
+          <span class="item"><span class="swatch c3"></span>Color 3</span>
+          <span class="item"><span class="swatch c4"></span>Extra color (greedy only)</span>
+          <span class="item"><span class="swatch conflict"></span>Conflict</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Pseudocode & step explanation -->
+    <section class="card">
+      <header>
+        <h2>Pseudocode &amp; step-by-step explanation</h2>
+        <span class="hint" id="algoLabel">Algorithm: Greedy</span>
+      </header>
+      <div class="body">
+        <div class="tabs" id="pseudoTabs">
+          <button class="on" data-tab="greedy">Greedy</button>
+          <button data-tab="backtrack">Backtracking (Exact)</button>
+        </div>
+
+        <!-- Greedy pseudocode -->
+        <div class="pseudocode" id="pseudoGreedy">
+          <div class="line" data-line="1"><span class="kw">function</span> <span class="fn">GreedyColor</span>(G, order):</div>
+          <div class="line" data-line="2">  <span class="cm"># assign each vertex the smallest color not used by neighbors</span></div>
+          <div class="line" data-line="3">  <span class="kw">for</span> v <span class="kw">in</span> order:</div>
+          <div class="line" data-line="4">    used ← { color[u] : u ∈ neighbors(v), color[u] ≠ ⊥ }</div>
+          <div class="line" data-line="5">    c ← smallest positive integer ∉ used</div>
+          <div class="line" data-line="6">    color[v] ← c</div>
+          <div class="line" data-line="7">  <span class="kw">return</span> color</div>
+        </div>
+
+        <!-- Backtracking pseudocode -->
+        <div class="pseudocode" id="pseudoBacktrack" style="display:none;">
+          <div class="line" data-line="1"><span class="kw">function</span> <span class="fn">ExactThreeColor</span>(G):</div>
+          <div class="line" data-line="2">  color[v] ← ⊥ for all v</div>
+          <div class="line" data-line="3">  <span class="kw">return</span> <span class="fn">Solve</span>(0)</div>
+          <div class="line" data-line="4"></div>
+          <div class="line" data-line="5"><span class="kw">function</span> <span class="fn">Solve</span>(i):</div>
+          <div class="line" data-line="6">  <span class="kw">if</span> i = |V|: <span class="kw">return</span> true  <span class="cm"># all colored</span></div>
+          <div class="line" data-line="7">  v ← order[i]</div>
+          <div class="line" data-line="8">  <span class="kw">for</span> c <span class="kw">in</span> {1, 2, 3}:</div>
+          <div class="line" data-line="9">    <span class="kw">if</span> <span class="fn">isSafe</span>(v, c):</div>
+          <div class="line" data-line="10">      color[v] ← c</div>
+          <div class="line" data-line="11">      <span class="kw">if</span> <span class="fn">Solve</span>(i+1): <span class="kw">return</span> true</div>
+          <div class="line" data-line="12">      color[v] ← ⊥   <span class="cm"># backtrack</span></div>
+          <div class="line" data-line="13">  <span class="kw">return</span> false</div>
+        </div>
+
+        <div style="margin-top:10px;">
+          <div class="step-box">
+            <div class="stepk">Step explanation</div>
+            <div id="stepExplanation">Load a graph and press <b>Build Steps</b>, then <b>Step</b> or <b>Play</b> to begin.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats -->
+    <section class="card">
+      <header>
+        <h2>Live statistics</h2>
+        <span class="hint">Updated at every animation step.</span>
+      </header>
+      <div class="body">
+        <div class="stats-grid">
+          <div class="stat"><div class="k">Vertices processed</div><div class="v" id="sVProc">0</div></div>
+          <div class="stat"><div class="k">Edges checked</div><div class="v" id="sEChk">0</div></div>
+          <div class="stat"><div class="k">Assignments tried</div><div class="v" id="sAssign">0</div></div>
+          <div class="stat"><div class="k">Backtracks</div><div class="v" id="sBack">0</div></div>
+          <div class="stat"><div class="k">Colors used</div><div class="v" id="sColors">0</div></div>
+          <div class="stat"><div class="k">Elapsed time</div><div class="v" id="sTime">0 ms</div></div>
+          <div class="stat"><div class="k">3-coloring found?</div><div class="v" id="sFound">—</div></div>
+          <div class="stat"><div class="k">Step</div><div class="v" id="sStep">0 / 0</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparison -->
+    <section class="card">
+      <header>
+        <h2>Comparison — Greedy vs Backtracking</h2>
+        <button class="btn small primary" id="btnRunCompare">Run comparison</button>
+      </header>
+      <div class="body">
+        <p class="hint" style="margin-bottom:8px;">
+          Runs both algorithms non-interactively on the current graph and summarizes the outcome.
+          This is where greedy's limitation becomes concrete: on some 3-colorable graphs, greedy still uses 4+ colors.
+        </p>
+        <div class="cmp-grid">
+          <div class="cmp-card">
+            <h4>Greedy</h4>
+            <div class="row"><span class="k">Valid coloring?</span><span class="v" id="cgValid">—</span></div>
+            <div class="row"><span class="k">Colors used</span><span class="v" id="cgColors">—</span></div>
+            <div class="row"><span class="k">Operations</span><span class="v" id="cgOps">—</span></div>
+            <div class="row"><span class="k">Time</span><span class="v" id="cgTime">—</span></div>
+          </div>
+          <div class="cmp-card">
+            <h4>Backtracking (Exact)</h4>
+            <div class="row"><span class="k">3-colorable?</span><span class="v" id="cbExists">—</span></div>
+            <div class="row"><span class="k">Colors used</span><span class="v" id="cbColors">—</span></div>
+            <div class="row"><span class="k">Operations</span><span class="v" id="cbOps">—</span></div>
+            <div class="row"><span class="k">Time</span><span class="v" id="cbTime">—</span></div>
+          </div>
+        </div>
+        <hr class="sep" />
+        <div class="step-box" id="cmpVerdict">Run the comparison to see trade-offs.</div>
+      </div>
+    </section>
+
+    <!-- Growth curve -->
+    <section class="card">
+      <header>
+        <h2>Growth — Greedy vs Exact (conceptual)</h2>
+        <span class="hint">Vertical axis: work. Horizontal axis: graph size n.</span>
+      </header>
+      <div class="body">
+        <div class="chart-wrap">
+          <svg id="growthSvg" viewBox="0 0 600 260" width="100%" height="260" aria-label="Growth comparison chart"></svg>
+          <div class="chart-legend">
+            <span class="k"><span class="d" style="background:#3ad3ff"></span>Greedy ≈ O(V + E)</span>
+            <span class="k"><span class="d" style="background:#ff6b6b"></span>Exact backtracking ≈ O(3ⁿ)</span>
+          </div>
+        </div>
+        <p class="hint" style="margin-top:8px;">
+          Greedy scales gracefully, but the exact algorithm's cost explodes: at roughly <code>n = 20</code> the two curves are no longer on comparable scales.
+        </p>
+      </div>
+    </section>
+
+  </section>
+</main>
+
+<script>
+/* =========================================================
+   DATA: PRESETS
+   ========================================================= */
+const PRESETS = {
+  // Triangle chain: two triangles sharing an edge, 3-colorable
+  triangleChain: {
+    name: "Triangle chain",
+    vertices: ["A","B","C","D","E"],
+    edges: [["A","B"],["B","C"],["C","D"],["D","E"],["E","A"],["A","C"]]
+  },
+  // K4 complete graph on 4 vertices — NOT 3-colorable (chromatic number 4)
+  K4: {
+    name: "K4 (complete graph on 4)",
+    vertices: ["A","B","C","D"],
+    edges: [["A","B"],["A","C"],["A","D"],["B","C"],["B","D"],["C","D"]]
+  },
+  // Greedy trap: 3-colorable, but greedy with original order uses 4 colors
+  // Construction: two disjoint pairs (a1,a2), (b1,b2), cross-connected.
+  greedyTrap: {
+    name: "Greedy trap",
+    vertices: ["a1","a2","b1","b2","c1","c2"],
+    edges: [
+      ["a1","b2"],["a1","c2"],
+      ["a2","b1"],["a2","c1"],
+      ["b1","c2"],
+      ["b2","c1"]
+    ]
+  },
+  // Petersen graph — famously 3-colorable
+  petersen: {
+    name: "Petersen graph",
+    vertices: ["0","1","2","3","4","5","6","7","8","9"],
+    edges: [
+      ["0","1"],["1","2"],["2","3"],["3","4"],["4","0"],     // outer 5-cycle
+      ["5","7"],["7","9"],["9","6"],["6","8"],["8","5"],     // inner pentagram
+      ["0","5"],["1","6"],["2","7"],["3","8"],["4","9"]       // spokes
+    ]
+  },
+  // Odd cycle C5 — 3-colorable, not bipartite (not 2-colorable)
+  oddCycle: {
+    name: "Odd cycle C5",
+    vertices: ["A","B","C","D","E"],
+    edges: [["A","B"],["B","C"],["C","D"],["D","E"],["E","A"]]
+  }
+};
+
+/* =========================================================
+   PARSING: CUSTOM INPUT
+   Accepts lines of the form:
+     Vertices: A,B,C,D
+     Edges: A-B, B-C, C-D
+   Lenient: whitespace/empty lines/case-insensitive labels for keywords.
+   ========================================================= */
+function parseCustomInput(text) {
+  const result = { vertices: [], edges: [], errors: [] };
+  if (!text || !text.trim()) {
+    result.errors.push("Input is empty.");
+    return result;
+  }
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    const m = line.match(/^([A-Za-z]+)\s*:\s*(.*)$/);
+    if (!m) { result.errors.push(`Unrecognized line: "${line}"`); continue; }
+    const key = m[1].toLowerCase();
+    const val = m[2].trim();
+    if (key.startsWith("vertex") || key.startsWith("vertices") || key === "v" || key === "nodes" || key === "node") {
+      const items = val.split(/[,\s]+/).filter(Boolean);
+      result.vertices.push(...items);
+    } else if (key.startsWith("edge") || key === "e") {
+      const items = val.split(/[,;]+/).map(s => s.trim()).filter(Boolean);
+      for (const it of items) {
+        const parts = it.split(/\s*[-–]\s*/);
+        if (parts.length !== 2 || !parts[0] || !parts[1]) {
+          result.errors.push(`Invalid edge: "${it}"`);
+          continue;
+        }
+        result.edges.push([parts[0], parts[1]]);
+      }
+    } else {
+      result.errors.push(`Unknown keyword: "${m[1]}"`);
+    }
+  }
+  // Validate edges reference known vertices, add implicit if missing
+  const vset = new Set(result.vertices);
+  for (const [u, v] of result.edges) {
+    if (!vset.has(u)) { result.vertices.push(u); vset.add(u); }
+    if (!vset.has(v)) { result.vertices.push(v); vset.add(v); }
+  }
+  // Deduplicate vertices & edges (treat edge as unordered)
+  result.vertices = [...new Set(result.vertices)];
+  const eKey = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
+  const seen = new Set();
+  result.edges = result.edges.filter(([a, b]) => {
+    if (a === b) return false;
+    const k = eKey(a, b);
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+  return result;
+}
+
+/* =========================================================
+   GRAPH MODEL + LAYOUT
+   ========================================================= */
+const State = {
+  graph: { vertices: [], edges: [], adj: {}, name: "" },
+  positions: {},                // id -> {x, y}
+  algo: "greedy",               // 'greedy' or 'backtrack'
+  order: "original",            // 'original' | 'random' | 'descDegree'
+  steps: [],
+  stepIdx: 0,
+  playing: false,
+  playTimer: null,
+  speed: 500,
+  stats: {
+    vProc: 0, eChk: 0, assigns: 0, backs: 0, colorsUsed: 0, startTime: 0, elapsed: 0, found: null
+  },
+  // live "current" data for rendering
+  colors: {}, // vertex -> color index (1..k) or 0 for uncolored
+  current: null,
+  conflictEdge: null,
+  checkingEdge: null,
+  activeLine: 0
+};
+
+/** Build an adjacency map from vertex list + edges */
+function buildAdjacency(vertices, edges) {
+  const adj = {};
+  vertices.forEach(v => adj[v] = []);
+  for (const [u, v] of edges) {
+    if (!adj[u]) adj[u] = [];
+    if (!adj[v]) adj[v] = [];
+    if (!adj[u].includes(v)) adj[u].push(v);
+    if (!adj[v].includes(u)) adj[v].push(u);
+  }
+  return adj;
+}
+
+/** Circular layout for vertices — readable regardless of graph. */
+function layoutCircle(vertices, cx, cy, r) {
+  const pos = {};
+  const n = vertices.length;
+  if (n === 0) return pos;
+  if (n === 1) { pos[vertices[0]] = { x: cx, y: cy }; return pos; }
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2;
+    pos[vertices[i]] = { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+  }
+  return pos;
+}
+
+/* =========================================================
+   ORDERING HELPERS
+   ========================================================= */
+function computeOrder(vertices, adj, mode) {
+  const arr = [...vertices];
+  if (mode === "random") {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+  if (mode === "descDegree") {
+    return arr.sort((a, b) => (adj[b]?.length || 0) - (adj[a]?.length || 0));
+  }
+  return arr; // 'original'
+}
+
+/* =========================================================
+   GREEDY COLORING WITH STEP RECORDING
+   ========================================================= */
+function buildGreedySteps(graph, orderMode) {
+  const { vertices, edges, adj } = graph;
+  const order = computeOrder(vertices, adj, orderMode);
+  const steps = [];
+  const colors = {};
+  vertices.forEach(v => colors[v] = 0);
+  let edgeChecks = 0, assigns = 0;
+
+  steps.push({
+    kind: "start",
+    colors: { ...colors },
+    current: null,
+    line: 1,
+    text: `Greedy coloring starts. Order: [${order.join(", ")}].`
+  });
+
+  for (const v of order) {
+    // highlight current vertex, line 3
+    steps.push({
+      kind: "pickVertex",
+      colors: { ...colors },
+      current: v,
+      line: 3,
+      text: `Consider vertex ${v}. Examine its already-colored neighbors.`
+    });
+
+    // determine used colors by neighbors
+    const used = new Set();
+    for (const u of adj[v] || []) {
+      edgeChecks++;
+      steps.push({
+        kind: "checkNeighbor",
+        colors: { ...colors },
+        current: v,
+        checkingEdge: [v, u],
+        line: 4,
+        text: `Check neighbor ${u} of ${v}. Color of ${u} is ${colors[u] ? "Color " + colors[u] : "uncolored"}.`
+      });
+      if (colors[u]) used.add(colors[u]);
+    }
+
+    // pick smallest positive integer not in used
+    let c = 1;
+    while (used.has(c)) c++;
+    assigns++;
+    colors[v] = c;
+
+    steps.push({
+      kind: "assign",
+      colors: { ...colors },
+      current: v,
+      assignedColor: c,
+      usedByNeighbors: [...used],
+      line: 5,
+      text: `Neighbors used colors {${[...used].map(x => "Color "+x).join(", ") || "∅"}}. Smallest available is Color ${c}. Assign ${v} ← Color ${c}.`
+    });
+  }
+
+  const colorsUsed = Math.max(0, ...Object.values(colors));
+  steps.push({
+    kind: "end",
+    colors: { ...colors },
+    current: null,
+    line: 7,
+    text: `Greedy finished. Used ${colorsUsed} color(s). ${colorsUsed <= 3 ? "Valid 3-coloring." : "More than 3 colors — not a 3-coloring under this ordering."}`,
+    summary: {
+      valid3: colorsUsed <= 3,
+      colorsUsed,
+      edgeChecks,
+      assigns,
+      final: { ...colors }
+    }
+  });
+
+  return steps;
+}
+
+/* =========================================================
+   BACKTRACKING EXACT 3-COLORING WITH STEP RECORDING
+   ========================================================= */
+function buildBacktrackSteps(graph, orderMode) {
+  const { vertices, edges, adj } = graph;
+  const order = computeOrder(vertices, adj, orderMode);
+  const idx = {};
+  order.forEach((v, i) => idx[v] = i);
+
+  const steps = [];
+  const colors = {};
+  vertices.forEach(v => colors[v] = 0);
+  let edgeChecks = 0, assigns = 0, backs = 0;
+
+  steps.push({
+    kind: "start",
+    colors: { ...colors },
+    current: null,
+    line: 1,
+    text: `Backtracking starts. Order: [${order.join(", ")}]. Only colors {1,2,3} allowed.`
+  });
+
+  function isSafeRecord(v, c) {
+    // record edge checks
+    for (const u of adj[v] || []) {
+      edgeChecks++;
+      steps.push({
+        kind: "checkNeighbor",
+        colors: { ...colors },
+        current: v,
+        checkingEdge: [v, u],
+        line: 9,
+        text: `Try Color ${c} on ${v}. Check neighbor ${u} (color ${colors[u] || "—"}).`
+      });
+      if (colors[u] === c) {
+        steps.push({
+          kind: "conflict",
+          colors: { ...colors },
+          current: v,
+          conflictEdge: [v, u],
+          triedColor: c,
+          line: 9,
+          text: `Conflict: neighbor ${u} already has Color ${c}. Reject Color ${c} for ${v}.`
+        });
+        return false;
+      }
+    }
+    return true;
+  }
+
+  let found = false;
+
+  function solve(i) {
+    if (found) return true;
+    if (i === order.length) {
+      steps.push({
+        kind: "foundAll",
+        colors: { ...colors },
+        current: null,
+        line: 6,
+        text: "All vertices colored consistently. A valid 3-coloring has been found."
+      });
+      found = true;
+      return true;
+    }
+    const v = order[i];
+    steps.push({
+      kind: "pickVertex",
+      colors: { ...colors },
+      current: v,
+      line: 7,
+      text: `Advance to vertex ${v} (index ${i}).`
+    });
+
+    for (let c = 1; c <= 3; c++) {
+      steps.push({
+        kind: "tryColor",
+        colors: { ...colors },
+        current: v,
+        triedColor: c,
+        line: 8,
+        text: `Try Color ${c} for ${v}.`
+      });
+      if (isSafeRecord(v, c)) {
+        assigns++;
+        colors[v] = c;
+        steps.push({
+          kind: "assign",
+          colors: { ...colors },
+          current: v,
+          assignedColor: c,
+          line: 10,
+          text: `No conflict. Tentatively set ${v} ← Color ${c} and recurse.`
+        });
+        if (solve(i + 1)) return true;
+        // Backtrack
+        backs++;
+        colors[v] = 0;
+        steps.push({
+          kind: "backtrack",
+          colors: { ...colors },
+          current: v,
+          line: 12,
+          text: `Recursion failed below ${v}. Undo assignment (${v} ← ⊥) and try next color.`
+        });
+      }
+    }
+    steps.push({
+      kind: "deadEnd",
+      colors: { ...colors },
+      current: v,
+      line: 13,
+      text: `No color works at ${v}. Return false to caller.`
+    });
+    return false;
+  }
+
+  const ok = solve(0);
+  const colorsUsed = Math.max(0, ...Object.values(colors));
+  steps.push({
+    kind: "end",
+    colors: { ...colors },
+    current: null,
+    line: ok ? 6 : 13,
+    text: ok
+      ? `Backtracking finished: valid 3-coloring using ${colorsUsed} color(s).`
+      : "Backtracking exhausted all possibilities: graph is NOT 3-colorable.",
+    summary: {
+      valid3: ok,
+      colorsUsed: ok ? colorsUsed : 0,
+      edgeChecks, assigns, backs,
+      final: ok ? { ...colors } : null
+    }
+  });
+
+  return steps;
+}
+
+/* =========================================================
+   STEP ENGINE: applies one step to State + re-renders
+   ========================================================= */
+function applyStep(step) {
+  if (!step) return;
+  State.colors = step.colors ? { ...step.colors } : State.colors;
+  State.current = step.current || null;
+  State.conflictEdge = step.conflictEdge || null;
+  State.checkingEdge = step.checkingEdge || null;
+  State.activeLine = step.line || 0;
+
+  // Update stats based on step kind (incremental per-step counters)
+  switch (step.kind) {
+    case "pickVertex":      State.stats.vProc++;     break;
+    case "checkNeighbor":   State.stats.eChk++;      break;
+    case "assign":          State.stats.assigns++;   break;
+    case "backtrack":       State.stats.backs++;     break;
+    case "conflict":        /* counted via assign tries */ break;
+    case "tryColor":        /* surface only */       break;
+  }
+
+  // Recompute colorsUsed from current coloring (so it reflects the moment)
+  const used = new Set();
+  for (const v of State.graph.vertices) {
+    if (State.colors[v]) used.add(State.colors[v]);
+  }
+  State.stats.colorsUsed = used.size;
+
+  // Elapsed time is measured from steps having started playing/stepping
+  State.stats.elapsed = Date.now() - State.stats.startTime;
+
+  // Found status if terminal step
+  if (step.kind === "end" && step.summary) {
+    State.stats.found = step.summary.valid3;
+  }
+  if (step.kind === "foundAll") State.stats.found = true;
+
+  renderAll(step.text || "");
+}
+
+/** Reset step engine runtime state (keeps graph + steps). */
+function resetRuntime() {
+  clearInterval(State.playTimer);
+  State.playing = false;
+  State.stepIdx = 0;
+  State.stats = { vProc: 0, eChk: 0, assigns: 0, backs: 0, colorsUsed: 0, startTime: Date.now(), elapsed: 0, found: null };
+  const resetColors = {};
+  State.graph.vertices.forEach(v => resetColors[v] = 0);
+  State.colors = resetColors;
+  State.current = null;
+  State.conflictEdge = null;
+  State.checkingEdge = null;
+  State.activeLine = 0;
+  renderAll("Runtime reset. Press Step or Play.");
+  setMode("idle", "Idle");
+}
+
+/* =========================================================
+   RENDERING: GRAPH (SVG) + PSEUDOCODE + STATS + EXPLANATION
+   ========================================================= */
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function renderGraph() {
+  const svg = document.getElementById("graphSvg");
+  svg.innerHTML = "";
+  const { vertices, edges } = State.graph;
+  const vb = svg.viewBox.baseVal;
+  const cx = vb.width / 2, cy = vb.height / 2;
+  const r = Math.min(vb.width, vb.height) * 0.38;
+  State.positions = layoutCircle(vertices, cx, cy, r);
+
+  // Edges
+  for (const [u, v] of edges) {
+    const p1 = State.positions[u], p2 = State.positions[v];
+    if (!p1 || !p2) continue;
+    const line = document.createElementNS(SVG_NS, "line");
+    line.setAttribute("x1", p1.x); line.setAttribute("y1", p1.y);
+    line.setAttribute("x2", p2.x); line.setAttribute("y2", p2.y);
+    let cls = "edge";
+    const edgeMatches = (a, b) => (a === u && b === v) || (a === v && b === u);
+    if (State.conflictEdge && edgeMatches(State.conflictEdge[0], State.conflictEdge[1])) cls += " conflict";
+    else if (State.checkingEdge && edgeMatches(State.checkingEdge[0], State.checkingEdge[1])) cls += " checking";
+    line.setAttribute("class", cls);
+    svg.appendChild(line);
+  }
+
+  // Vertices
+  for (const v of vertices) {
+    const p = State.positions[v]; if (!p) continue;
+    const g = document.createElementNS(SVG_NS, "g");
+    g.setAttribute("transform", `translate(${p.x},${p.y})`);
+    const color = State.colors[v] || 0;
+    const colorClass = color === 0 ? "uncolored"
+                     : color <= 5 ? `c${color}` : `c5`;
+    const current = State.current === v ? " current" : "";
+    g.setAttribute("class", `vertex ${colorClass}${current}`);
+
+    const circle = document.createElementNS(SVG_NS, "circle");
+    circle.setAttribute("r", 18);
+    g.appendChild(circle);
+
+    const text = document.createElementNS(SVG_NS, "text");
+    text.textContent = v;
+    g.appendChild(text);
+
+    svg.appendChild(g);
+  }
+
+  document.getElementById("graphHint").textContent =
+    `Vertices: ${vertices.length} • Edges: ${edges.length}`;
+}
+
+function renderPseudocodeHighlight() {
+  const boxId = State.algo === "greedy" ? "pseudoGreedy" : "pseudoBacktrack";
+  const box = document.getElementById(boxId);
+  if (!box) return;
+  box.querySelectorAll(".line").forEach(el => {
+    el.classList.toggle("active", Number(el.dataset.line) === State.activeLine);
+  });
+}
+
+function renderStats() {
+  document.getElementById("sVProc").textContent = State.stats.vProc;
+  document.getElementById("sEChk").textContent = State.stats.eChk;
+  document.getElementById("sAssign").textContent = State.stats.assigns;
+  document.getElementById("sBack").textContent = State.stats.backs;
+  document.getElementById("sColors").textContent = State.stats.colorsUsed;
+  document.getElementById("sTime").textContent = `${State.stats.elapsed} ms`;
+  const foundEl = document.getElementById("sFound");
+  if (State.stats.found === true) { foundEl.textContent = "Yes"; foundEl.className = "v good"; }
+  else if (State.stats.found === false) { foundEl.textContent = "No"; foundEl.className = "v bad"; }
+  else { foundEl.textContent = "—"; foundEl.className = "v"; }
+  document.getElementById("sStep").textContent = `${State.stepIdx} / ${State.steps.length}`;
+
+  document.getElementById("stepCounter").textContent = `Step ${State.stepIdx} / ${State.steps.length}`;
+}
+
+function renderExplanation(text) {
+  const el = document.getElementById("stepExplanation");
+  if (text !== undefined) el.innerHTML = text;
+}
+
+function renderAll(text) {
+  renderGraph();
+  renderPseudocodeHighlight();
+  renderStats();
+  if (text !== undefined) renderExplanation(text);
+}
+
+/* =========================================================
+   UI: MODE BADGE, STATUS
+   ========================================================= */
+function setMode(kind, label) {
+  const badge = document.getElementById("modeBadge");
+  badge.className = "badge " + ({
+    idle: "mode-idle", run: "mode-run", done: "mode-done", fail: "mode-fail"
+  }[kind] || "mode-idle");
+  document.getElementById("modeText").textContent = label;
+  document.getElementById("statusIndicator").textContent = `Status: ${label.toLowerCase()}`;
+}
+
+/* =========================================================
+   LOADING GRAPHS
+   ========================================================= */
+function loadGraph(graphDef) {
+  const vertices = [...graphDef.vertices];
+  const edges = graphDef.edges.map(([a, b]) => [a, b]);
+  const adj = buildAdjacency(vertices, edges);
+  State.graph = { vertices, edges, adj, name: graphDef.name || "Custom" };
+  document.getElementById("graphLabel").textContent = `Graph: ${State.graph.name}`;
+  State.steps = [];
+  State.stepIdx = 0;
+  // Initialize colors to 0
+  const colors = {};
+  vertices.forEach(v => colors[v] = 0);
+  State.colors = colors;
+  State.current = null;
+  State.conflictEdge = null;
+  State.checkingEdge = null;
+  State.activeLine = 0;
+  State.stats = { vProc: 0, eChk: 0, assigns: 0, backs: 0, colorsUsed: 0, startTime: Date.now(), elapsed: 0, found: null };
+  setMode("idle", "Idle");
+  renderAll("Graph loaded. Build steps to begin.");
+}
+
+/* =========================================================
+   STEP ENGINE PUBLIC API
+   ========================================================= */
+function buildSteps() {
+  if (!State.graph.vertices.length) {
+    renderExplanation("Load a graph first.");
+    return;
+  }
+  State.steps = (State.algo === "greedy")
+    ? buildGreedySteps(State.graph, State.order)
+    : buildBacktrackSteps(State.graph, State.order);
+  State.stepIdx = 0;
+  // reset live state
+  const c0 = {}; State.graph.vertices.forEach(v => c0[v] = 0);
+  State.colors = c0;
+  State.current = null; State.conflictEdge = null; State.checkingEdge = null;
+  State.activeLine = 0;
+  State.stats = { vProc: 0, eChk: 0, assigns: 0, backs: 0, colorsUsed: 0, startTime: Date.now(), elapsed: 0, found: null };
+  setMode("idle", "Ready");
+  renderAll(`Built ${State.steps.length} step(s). Press Step or Play.`);
+}
+
+function stepForward() {
+  if (State.stepIdx >= State.steps.length) {
+    stopPlaying();
+    // Settle final mode
+    const last = State.steps[State.steps.length - 1];
+    if (last && last.summary) {
+      setMode(last.summary.valid3 ? "done" : "fail", last.summary.valid3 ? "Success" : "Not 3-colorable");
+    } else {
+      setMode("done", "Done");
+    }
+    return;
+  }
+  const step = State.steps[State.stepIdx++];
+  applyStep(step);
+}
+
+function startPlaying() {
+  if (!State.steps.length) buildSteps();
+  if (State.playing) return;
+  State.playing = true;
+  setMode("run", "Running");
+  State.stats.startTime = Date.now() - State.stats.elapsed;
+  State.playTimer = setInterval(() => {
+    if (State.stepIdx >= State.steps.length) {
+      stopPlaying();
+      const last = State.steps[State.steps.length - 1];
+      if (last && last.summary) {
+        setMode(last.summary.valid3 ? "done" : "fail", last.summary.valid3 ? "Success" : "Not 3-colorable");
+      } else {
+        setMode("done", "Done");
+      }
+      return;
+    }
+    stepForward();
+  }, State.speed);
+}
+
+function stopPlaying() {
+  State.playing = false;
+  clearInterval(State.playTimer);
+  State.playTimer = null;
+}
+
+/* =========================================================
+   COMPARISON: run greedy and backtracking headlessly
+   ========================================================= */
+function headlessGreedy(graph, orderMode) {
+  const t0 = performance.now();
+  const { vertices, adj } = graph;
+  const order = computeOrder(vertices, adj, orderMode);
+  const colors = {}; vertices.forEach(v => colors[v] = 0);
+  let ops = 0;
+  for (const v of order) {
+    const used = new Set();
+    for (const u of adj[v] || []) { ops++; if (colors[u]) used.add(colors[u]); }
+    let c = 1; while (used.has(c)) c++;
+    colors[v] = c; ops++;
+  }
+  const colorsUsed = Math.max(0, ...Object.values(colors));
+  return {
+    colors, colorsUsed, valid: colorsUsed <= 3,
+    ops, time: performance.now() - t0
+  };
+}
+
+function headlessBacktrack(graph, orderMode) {
+  const t0 = performance.now();
+  const { vertices, adj } = graph;
+  const order = computeOrder(vertices, adj, orderMode);
+  const colors = {}; vertices.forEach(v => colors[v] = 0);
+  let ops = 0, backs = 0;
+  function isSafe(v, c) {
+    for (const u of adj[v] || []) { ops++; if (colors[u] === c) return false; }
+    return true;
+  }
+  function solve(i) {
+    if (i === order.length) return true;
+    const v = order[i];
+    for (let c = 1; c <= 3; c++) {
+      if (isSafe(v, c)) {
+        colors[v] = c; ops++;
+        if (solve(i + 1)) return true;
+        colors[v] = 0; backs++;
+      }
+    }
+    return false;
+  }
+  const ok = solve(0);
+  const colorsUsed = ok ? Math.max(0, ...Object.values(colors)) : 0;
+  return { colors, colorsUsed, valid: ok, ops, backs, time: performance.now() - t0 };
+}
+
+function runComparison() {
+  if (!State.graph.vertices.length) return;
+  const g = headlessGreedy(State.graph, State.order);
+  const b = headlessBacktrack(State.graph, State.order);
+
+  document.getElementById("cgValid").textContent = g.valid ? "Yes (≤ 3 colors)" : "No (used > 3)";
+  document.getElementById("cgValid").className = "v " + (g.valid ? "good" : "bad");
+  document.getElementById("cgColors").textContent = g.colorsUsed;
+  document.getElementById("cgOps").textContent = g.ops;
+  document.getElementById("cgTime").textContent = `${g.time.toFixed(2)} ms`;
+
+  document.getElementById("cbExists").textContent = b.valid ? "Yes" : "No";
+  document.getElementById("cbExists").className = "v " + (b.valid ? "good" : "bad");
+  document.getElementById("cbColors").textContent = b.valid ? b.colorsUsed : "—";
+  document.getElementById("cbOps").textContent = b.ops;
+  document.getElementById("cbTime").textContent = `${b.time.toFixed(2)} ms`;
+
+  // Verdict explanation
+  let verdict = "";
+  if (b.valid && g.valid) {
+    verdict = `<b class="ok">Both succeeded.</b> The graph is 3-colorable and greedy also fit within 3 colors under the selected ordering. Greedy ran in ${g.time.toFixed(2)} ms vs. backtracking ${b.time.toFixed(2)} ms — on small graphs the gap is small, but scales very differently.`;
+  } else if (b.valid && !g.valid) {
+    verdict = `<b class="warn">Greedy failed, backtracking succeeded.</b> The graph IS 3-colorable (backtracking found a valid assignment with ${b.colorsUsed} colors), yet greedy needed ${g.colorsUsed} colors with the current ordering. This is the textbook counterexample: greedy is a heuristic, not an exact solver. Try changing the ordering to "Desc. degree" — greedy may improve.`;
+  } else if (!b.valid && !g.valid) {
+    verdict = `<b class="bad">Graph is not 3-colorable.</b> Backtracking exhausted all ${Math.min(3, State.graph.vertices.length)}-color assignments. Greedy used ${g.colorsUsed} colors, which is a lower bound on the chromatic number.`;
+  } else {
+    verdict = "Unexpected result.";
+  }
+  document.getElementById("cmpVerdict").innerHTML = verdict;
+}
+
+/* =========================================================
+   GROWTH CHART (SVG) — Greedy vs Exact (illustrative)
+   ========================================================= */
+function renderGrowthChart() {
+  const svg = document.getElementById("growthSvg");
+  svg.innerHTML = "";
+  const W = 600, H = 260, pad = { l: 42, r: 18, t: 12, b: 28 };
+  const x0 = pad.l, y0 = H - pad.b;
+  const x1 = W - pad.r, y1 = pad.t;
+
+  // Axes
+  const axisStyle = 'stroke="#3a437f" stroke-width="1.5"';
+  svg.insertAdjacentHTML("beforeend",
+    `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y0}" ${axisStyle}/>` +
+    `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" ${axisStyle}/>`
+  );
+
+  // Labels
+  svg.insertAdjacentHTML("beforeend",
+    `<text x="${(x0+x1)/2}" y="${H-6}" text-anchor="middle" fill="#a9b2d8" font-size="11">n (vertices)</text>` +
+    `<text transform="translate(14,${(y0+y1)/2}) rotate(-90)" text-anchor="middle" fill="#a9b2d8" font-size="11">work</text>`
+  );
+
+  // Sample function points: greedy ~ n, exact ~ 3^n (normalized for plotting)
+  const nMax = 18; // cap for display
+  const greedyVals = [];
+  const exactVals = [];
+  for (let n = 1; n <= nMax; n++) {
+    greedyVals.push(n);            // O(V+E) ~ linear placeholder
+    exactVals.push(Math.pow(3, n)); // exponential
+  }
+  // Normalize both to the chart area using log for exact
+  const scaleX = n => x0 + (n / nMax) * (x1 - x0);
+  const maxLog = Math.log(exactVals[nMax - 1] + 1);
+  const scaleYExact = v => y0 - (Math.log(v + 1) / maxLog) * (y0 - y1) * 0.95;
+  const scaleYGreedy = v => y0 - (v / nMax) * (y0 - y1) * 0.25;
+
+  // Plot greedy (linear)
+  let dG = "";
+  greedyVals.forEach((v, i) => {
+    const x = scaleX(i + 1), y = scaleYGreedy(v);
+    dG += (i === 0 ? `M${x},${y}` : ` L${x},${y}`);
+  });
+  svg.insertAdjacentHTML("beforeend",
+    `<path d="${dG}" fill="none" stroke="#3ad3ff" stroke-width="2.5"/>`);
+
+  // Plot exact (log scale, so it's visually curved upward)
+  let dE = "";
+  exactVals.forEach((v, i) => {
+    const x = scaleX(i + 1), y = scaleYExact(v);
+    dE += (i === 0 ? `M${x},${y}` : ` L${x},${y}`);
+  });
+  svg.insertAdjacentHTML("beforeend",
+    `<path d="${dE}" fill="none" stroke="#ff6b6b" stroke-width="2.5"/>`);
+
+  // Grid ticks
+  for (let i = 0; i <= nMax; i += 3) {
+    const x = scaleX(i);
+    svg.insertAdjacentHTML("beforeend",
+      `<line x1="${x}" y1="${y0}" x2="${x}" y2="${y0+4}" stroke="#3a437f"/>` +
+      `<text x="${x}" y="${y0+16}" text-anchor="middle" fill="#7a83ab" font-size="10">${i}</text>`
+    );
+  }
+
+  // End-point labels
+  const lastX = scaleX(nMax);
+  svg.insertAdjacentHTML("beforeend",
+    `<text x="${lastX-4}" y="${scaleYGreedy(nMax)-6}" text-anchor="end" fill="#3ad3ff" font-size="11">Greedy</text>` +
+    `<text x="${lastX-4}" y="${scaleYExact(exactVals[nMax-1])-6}" text-anchor="end" fill="#ff6b6b" font-size="11">Exact</text>`
+  );
+}
+
+/* =========================================================
+   UI WIRING
+   ========================================================= */
+function wireUI() {
+  // Preset loader
+  document.getElementById("btnLoadPreset").addEventListener("click", () => {
+    const key = document.getElementById("preset").value;
+    const def = PRESETS[key];
+    if (def) loadGraph(def);
+  });
+
+  // Build from custom input (or preset if textarea empty)
+  document.getElementById("btnBuildGraph").addEventListener("click", () => {
+    const text = document.getElementById("customInput").value;
+    const parsed = parseCustomInput(text);
+    if (parsed.errors.length) {
+      renderExplanation(
+        `<b class="bad">Input errors:</b><br>${parsed.errors.map(e => "• " + e).join("<br>")}`
+      );
+    }
+    if (parsed.vertices.length === 0) return;
+    loadGraph({ name: "Custom", vertices: parsed.vertices, edges: parsed.edges });
+  });
+
+  // Algorithm selector
+  document.getElementById("algSeg").addEventListener("click", (e) => {
+    if (e.target.tagName !== "BUTTON") return;
+    document.querySelectorAll("#algSeg button").forEach(b => b.classList.remove("on"));
+    e.target.classList.add("on");
+    State.algo = e.target.dataset.alg;
+    document.getElementById("algoLabel").textContent = "Algorithm: " + (State.algo === "greedy" ? "Greedy" : "Backtracking (Exact)");
+    // Switch pseudocode panel
+    document.getElementById("pseudoGreedy").style.display = State.algo === "greedy" ? "" : "none";
+    document.getElementById("pseudoBacktrack").style.display = State.algo === "backtrack" ? "" : "none";
+    document.querySelectorAll("#pseudoTabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === State.algo));
+    resetRuntime();
+  });
+
+  // Pseudocode tabs mirror algorithm selector
+  document.getElementById("pseudoTabs").addEventListener("click", (e) => {
+    if (e.target.tagName !== "BUTTON") return;
+    const alg = e.target.dataset.tab;
+    document.querySelectorAll("#algSeg button").forEach(b => b.classList.toggle("on", b.dataset.alg === alg));
+    State.algo = alg;
+    document.getElementById("algoLabel").textContent = "Algorithm: " + (alg === "greedy" ? "Greedy" : "Backtracking (Exact)");
+    document.getElementById("pseudoGreedy").style.display = alg === "greedy" ? "" : "none";
+    document.getElementById("pseudoBacktrack").style.display = alg === "backtrack" ? "" : "none";
+    document.querySelectorAll("#pseudoTabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === alg));
+    resetRuntime();
+  });
+
+  // Ordering selector
+  document.getElementById("orderSeg").addEventListener("click", (e) => {
+    if (e.target.tagName !== "BUTTON") return;
+    document.querySelectorAll("#orderSeg button").forEach(b => b.classList.remove("on"));
+    e.target.classList.add("on");
+    State.order = e.target.dataset.order;
+    resetRuntime();
+  });
+
+  // Shuffle
+  document.getElementById("btnShuffle").addEventListener("click", () => {
+    State.order = "random";
+    document.querySelectorAll("#orderSeg button").forEach(b => b.classList.toggle("on", b.dataset.order === "random"));
+    resetRuntime();
+    renderExplanation("Random ordering reshuffled. Build steps to replay.");
+  });
+
+  // Speed
+  const speed = document.getElementById("speed");
+  const speedLabel = document.getElementById("speedLabel");
+  speed.addEventListener("input", () => {
+    State.speed = Number(speed.value);
+    speedLabel.textContent = `${State.speed} ms`;
+    if (State.playing) { stopPlaying(); startPlaying(); }
+  });
+
+  // Playback
+  document.getElementById("btnBuildSteps").addEventListener("click", buildSteps);
+  document.getElementById("btnStep").addEventListener("click", () => {
+    if (!State.steps.length) buildSteps();
+    if (State.stats.startTime === 0) State.stats.startTime = Date.now();
+    stepForward();
+  });
+  document.getElementById("btnPlay").addEventListener("click", () => {
+    if (!State.steps.length) buildSteps();
+    startPlaying();
+  });
+  document.getElementById("btnPause").addEventListener("click", () => {
+    stopPlaying();
+    setMode("idle", "Paused");
+  });
+  document.getElementById("btnReset").addEventListener("click", () => {
+    resetRuntime();
+  });
+
+  // Comparison
+  document.getElementById("btnRunCompare").addEventListener("click", runComparison);
+  document.getElementById("cmpToggle").addEventListener("change", (e) => {
+    document.getElementById("cmpToggleWrap").classList.toggle("active", e.target.checked);
+    if (e.target.checked) runComparison();
+  });
+
+  // Worked example shortcut
+  document.getElementById("btnLoadWorkedExample").addEventListener("click", () => {
+    loadGraph({
+      name: "Worked example (triangle + tail)",
+      vertices: ["A","B","C","D"],
+      edges: [["A","B"],["A","C"],["B","C"],["C","D"]]
+    });
+    document.getElementById("customInput").value = "Vertices: A,B,C,D\nEdges: A-B, A-C, B-C, C-D";
+  });
+}
+
+/* =========================================================
+   BOOTSTRAP
+   ========================================================= */
+function init() {
+  wireUI();
+  // Default: load first preset
+  loadGraph(PRESETS.triangleChain);
+  renderGrowthChart();
+  setMode("idle", "Idle");
+}
+document.addEventListener("DOMContentLoaded", init);
+</script>
+</body>
+</html>
